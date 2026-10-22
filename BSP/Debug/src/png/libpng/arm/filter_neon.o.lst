@@ -1,0 +1,1545 @@
+   1              	# 0 "../src/png/libpng/arm/filter_neon.S"
+   2              	# 1 "C:\\workspace\\RZA2M\\LVGL\\LVGL_Renesas_RZA2M_FreeRTOS10\\BSP\\Debug//"
+   0              	
+   0              	
+   0              	
+   1              	
+   2              	/* filter_neon.S - NEON optimised filter functions
+   3              	 *
+   4              	 * Copyright (c) 2014,2017 Glenn Randers-Pehrson
+   5              	 * Written by Mans Rullgard, 2011.
+   6              	 * Last changed in libpng 1.6.31 [July 27, 2017]
+   7              	 *
+   8              	 * This code is released under the libpng license.
+   9              	 * For conditions of distribution and use, see the disclaimer
+  10              	 * and license in png.h
+  11              	 */
+  12              	
+  13              	/* This is required to get the symbol renames, which are #defines, and the
+  14              	 * definitions (or not) of PNG_ARM_NEON_OPT and PNG_ARM_NEON_IMPLEMENTATION.
+  15              	 */
+  16              	#define PNG_VERSION_INFO_ONLY
+  17              	#include "../pngpriv.h"
+   1              	
+   2              	/* pngpriv.h - private declarations for use inside libpng
+   3              	 *
+   4              	 * Last changed in libpng 1.6.35 [July 15, 2018]
+   5              	 * Copyright (c) 1998-2002,2004,2006-2018 Glenn Randers-Pehrson
+   6              	 * (Version 0.96 Copyright (c) 1996, 1997 Andreas Dilger)
+   7              	 * (Version 0.88 Copyright (c) 1995, 1996 Guy Eric Schalnat, Group 42, Inc.)
+   8              	 *
+   9              	 * This code is released under the libpng license.
+  10              	 * For conditions of distribution and use, see the disclaimer
+  11              	 * and license in png.h
+  12              	 */
+  13              	
+  14              	/* The symbols declared in this file (including the functions declared
+  15              	 * as extern) are PRIVATE.  They are not part of the libpng public
+  16              	 * interface, and are not recommended for use by regular applications.
+  17              	 * Some of them may become public in the future; others may stay private,
+  18              	 * change in an incompatible way, or even disappear.
+  19              	 * Although the libpng users are not forbidden to include this header,
+  20              	 * they should be well aware of the issues that may arise from doing so.
+  21              	 */
+  22              	
+  23              	#ifndef PNGPRIV_H
+  24              	#define PNGPRIV_H
+  25              	
+  26              	/* Feature Test Macros.  The following are defined here to ensure that correctly
+  27              	 * implemented libraries reveal the APIs libpng needs to build and hide those
+  28              	 * that are not needed and potentially damaging to the compilation.
+  29              	 *
+  30              	 * Feature Test Macros must be defined before any system header is included (see
+  31              	 * POSIX 1003.1 2.8.2 "POSIX Symbols."
+  32              	 *
+  33              	 * These macros only have an effect if the operating system supports either
+  34              	 * POSIX 1003.1 or C99, or both.  On other operating systems (particularly
+  35              	 * Windows/Visual Studio) there is no effect; the OS specific tests below are
+  36              	 * still required (as of 2011-05-02.)
+  37              	 */
+  38              	#ifndef _POSIX_SOURCE
+  39              	# define _POSIX_SOURCE 1 /* Just the POSIX 1003.1 and C89 APIs */
+  40              	#endif
+  41              	
+  42              	#ifndef PNG_VERSION_INFO_ONLY
+  43              	/* Standard library headers not required by png.h: */
+  44              	#  include <stdlib.h>
+  45              	#  include <string.h>
+  46              	#endif
+  47              	
+  48              	#define PNGLIB_BUILD /*libpng is being built, not used*/
+  49              	
+  50              	/* If HAVE_CONFIG_H is defined during the build then the build system must
+  51              	 * provide an appropriate "config.h" file on the include path.  The header file
+  52              	 * must provide definitions as required below (search for "HAVE_CONFIG_H");
+  53              	 * see configure.ac for more details of the requirements.  The macro
+  54              	 * "PNG_NO_CONFIG_H" is provided for maintainers to test for dependencies on
+  55              	 * 'configure'; define this macro to prevent the configure build including the
+  56              	 * configure generated config.h.  Libpng is expected to compile without *any*
+  57              	 * special build system support on a reasonably ANSI-C compliant system.
+  58              	 */
+  59              	#if defined(HAVE_CONFIG_H) && !defined(PNG_NO_CONFIG_H)
+  60              	#  include <config.h>
+  61              	
+  62              	   /* Pick up the definition of 'restrict' from config.h if it was read: */
+  63              	#  define PNG_RESTRICT restrict
+  64              	#endif
+  65              	
+  66              	/* To support symbol prefixing it is necessary to know *before* including png.h
+  67              	 * whether the fixed point (and maybe other) APIs are exported, because if they
+  68              	 * are not internal definitions may be required.  This is handled below just
+  69              	 * before png.h is included, but load the configuration now if it is available.
+  70              	 */
+  71              	#ifndef PNGLCONF_H
+  72              	#  include "pnglibconf.h"
+   1              	/* libpng 1.6.35 STANDARD API DEFINITION */
+   2              	
+   3              	/* pnglibconf.h - library build configuration */
+   4              	
+   5              	/* Libpng version 1.6.35 - July 15, 2018 */
+   6              	
+   7              	/* Copyright (c) 1998-2018 Glenn Randers-Pehrson */
+   8              	
+   9              	/* This code is released under the libpng license. */
+  10              	/* For conditions of distribution and use, see the disclaimer */
+  11              	/* and license in png.h */
+  12              	
+  13              	/* pnglibconf.h */
+  14              	/* Machine generated file: DO NOT EDIT */
+  15              	/* Derived from: scripts/pnglibconf.dfa */
+  16              	#ifndef PNGLCONF_H
+  17              	#define PNGLCONF_H
+  18              	#define PNG_RZ
+  19              	/* options */
+  20              	#define PNG_16BIT_SUPPORTED
+  21              	#define PNG_ALIGNED_MEMORY_SUPPORTED
+  22              	/*#undef PNG_ARM_NEON_API_SUPPORTED*/
+  23              	/*#undef PNG_ARM_NEON_CHECK_SUPPORTED*/
+  24              	/*#undef PNG_POWERPC_VSX_API_SUPPORTED*/
+  25              	/*#undef PNG_POWERPC_VSX_CHECK_SUPPORTED*/
+  26              	#define PNG_BENIGN_ERRORS_SUPPORTED
+  27              	#define PNG_BENIGN_READ_ERRORS_SUPPORTED
+  28              	/*#undef PNG_BENIGN_WRITE_ERRORS_SUPPORTED*/
+  29              	#define PNG_BUILD_GRAYSCALE_PALETTE_SUPPORTED
+  30              	#define PNG_CHECK_FOR_INVALID_INDEX_SUPPORTED
+  31              	#define PNG_COLORSPACE_SUPPORTED
+  32              	/*#define PNG_CONSOLE_IO_SUPPORTED*/
+  33              	/*#define PNG_CONVERT_tIME_SUPPORTED*/
+  34              	#define PNG_EASY_ACCESS_SUPPORTED
+  35              	/*#undef PNG_ERROR_NUMBERS_SUPPORTED*/
+  36              	/*#define PNG_ERROR_TEXT_SUPPORTED*/
+  37              	#define PNG_FIXED_POINT_SUPPORTED
+  38              	#define PNG_FLOATING_ARITHMETIC_SUPPORTED
+  39              	#define PNG_FLOATING_POINT_SUPPORTED
+  40              	#define PNG_FORMAT_AFIRST_SUPPORTED
+  41              	#define PNG_FORMAT_BGR_SUPPORTED
+  42              	#define PNG_GAMMA_SUPPORTED
+  43              	#define PNG_GET_PALETTE_MAX_SUPPORTED
+  44              	#define PNG_HANDLE_AS_UNKNOWN_SUPPORTED
+  45              	#define PNG_INCH_CONVERSIONS_SUPPORTED
+  46              	#define PNG_INFO_IMAGE_SUPPORTED
+  47              	#define PNG_IO_STATE_SUPPORTED
+  48              	#define PNG_MNG_FEATURES_SUPPORTED
+  49              	#define PNG_POINTER_INDEXING_SUPPORTED
+  50              	#define PNG_PROGRESSIVE_READ_SUPPORTED
+  51              	#define PNG_READ_16BIT_SUPPORTED
+  52              	#define PNG_READ_ALPHA_MODE_SUPPORTED
+  53              	#define PNG_READ_ANCILLARY_CHUNKS_SUPPORTED
+  54              	#define PNG_READ_BACKGROUND_SUPPORTED
+  55              	#define PNG_READ_BGR_SUPPORTED
+  56              	#define PNG_READ_CHECK_FOR_INVALID_INDEX_SUPPORTED
+  57              	#define PNG_READ_COMPOSITE_NODIV_SUPPORTED
+  58              	#define PNG_READ_COMPRESSED_TEXT_SUPPORTED
+  59              	#define PNG_READ_EXPAND_16_SUPPORTED
+  60              	#define PNG_READ_EXPAND_SUPPORTED
+  61              	#define PNG_READ_FILLER_SUPPORTED
+  62              	#define PNG_READ_GAMMA_SUPPORTED
+  63              	#define PNG_READ_GET_PALETTE_MAX_SUPPORTED
+  64              	#define PNG_READ_GRAY_TO_RGB_SUPPORTED
+  65              	#define PNG_READ_INTERLACING_SUPPORTED
+  66              	#define PNG_READ_INT_FUNCTIONS_SUPPORTED
+  67              	#define PNG_READ_INVERT_ALPHA_SUPPORTED
+  68              	#define PNG_READ_INVERT_SUPPORTED
+  69              	#define PNG_READ_OPT_PLTE_SUPPORTED
+  70              	#define PNG_READ_PACKSWAP_SUPPORTED
+  71              	#define PNG_READ_PACK_SUPPORTED
+  72              	/*#define PNG_READ_QUANTIZE_SUPPORTED*/
+  73              	#define PNG_READ_RGB_TO_GRAY_SUPPORTED
+  74              	#define PNG_READ_SCALE_16_TO_8_SUPPORTED
+  75              	#define PNG_READ_SHIFT_SUPPORTED
+  76              	#define PNG_READ_STRIP_16_TO_8_SUPPORTED
+  77              	#define PNG_READ_STRIP_ALPHA_SUPPORTED
+  78              	#define PNG_READ_SUPPORTED
+  79              	#define PNG_READ_SWAP_ALPHA_SUPPORTED
+  80              	#define PNG_READ_SWAP_SUPPORTED
+  81              	#define PNG_READ_TEXT_SUPPORTED
+  82              	#define PNG_READ_TRANSFORMS_SUPPORTED
+  83              	#define PNG_READ_UNKNOWN_CHUNKS_SUPPORTED
+  84              	#define PNG_READ_USER_CHUNKS_SUPPORTED
+  85              	#define PNG_READ_USER_TRANSFORM_SUPPORTED
+  86              	#define PNG_READ_bKGD_SUPPORTED
+  87              	#define PNG_READ_cHRM_SUPPORTED
+  88              	#define PNG_READ_eXIf_SUPPORTED
+  89              	#define PNG_READ_gAMA_SUPPORTED
+  90              	#define PNG_READ_hIST_SUPPORTED
+  91              	#define PNG_READ_iCCP_SUPPORTED
+  92              	#define PNG_READ_iTXt_SUPPORTED
+  93              	#define PNG_READ_oFFs_SUPPORTED
+  94              	#define PNG_READ_pCAL_SUPPORTED
+  95              	#define PNG_READ_pHYs_SUPPORTED
+  96              	#define PNG_READ_sBIT_SUPPORTED
+  97              	#define PNG_READ_sCAL_SUPPORTED
+  98              	#define PNG_READ_sPLT_SUPPORTED
+  99              	#define PNG_READ_sRGB_SUPPORTED
+ 100              	#define PNG_READ_tEXt_SUPPORTED
+ 101              	#define PNG_READ_tIME_SUPPORTED
+ 102              	#define PNG_READ_tRNS_SUPPORTED
+ 103              	#define PNG_READ_zTXt_SUPPORTED
+ 104              	/*#define PNG_SAVE_INT_32_SUPPORTED*/
+ 105              	#define PNG_SAVE_UNKNOWN_CHUNKS_SUPPORTED
+ 106              	#define PNG_SEQUENTIAL_READ_SUPPORTED
+ 107              	#ifndef PNG_RZ
+ 108              	#define PNG_SETJMP_SUPPORTED
+ 109              	#endif
+ 110              	#define PNG_SET_OPTION_SUPPORTED
+ 111              	#define PNG_SET_UNKNOWN_CHUNKS_SUPPORTED
+ 112              	#define PNG_SET_USER_LIMITS_SUPPORTED
+ 113              	#define PNG_SIMPLIFIED_READ_AFIRST_SUPPORTED
+ 114              	#define PNG_SIMPLIFIED_READ_BGR_SUPPORTED
+ 115              	/*#define PNG_SIMPLIFIED_READ_SUPPORTED*/
+ 116              	#define PNG_SIMPLIFIED_WRITE_AFIRST_SUPPORTED
+ 117              	#define PNG_SIMPLIFIED_WRITE_BGR_SUPPORTED
+ 118              	#define PNG_SIMPLIFIED_WRITE_STDIO_SUPPORTED
+ 119              	/*#define PNG_SIMPLIFIED_WRITE_SUPPORTED*/
+ 120              	/*#define PNG_STDIO_SUPPORTED*/
+ 121              	#define PNG_STORE_UNKNOWN_CHUNKS_SUPPORTED
+ 122              	#define PNG_TEXT_SUPPORTED
+ 123              	#define PNG_TIME_RFC1123_SUPPORTED
+ 124              	#define PNG_UNKNOWN_CHUNKS_SUPPORTED
+ 125              	#define PNG_USER_CHUNKS_SUPPORTED
+ 126              	#define PNG_USER_LIMITS_SUPPORTED
+ 127              	#define PNG_USER_MEM_SUPPORTED
+ 128              	#define PNG_USER_TRANSFORM_INFO_SUPPORTED
+ 129              	#define PNG_USER_TRANSFORM_PTR_SUPPORTED
+ 130              	#define PNG_WARNINGS_SUPPORTED
+ 131              	/*#define PNG_WRITE_16BIT_SUPPORTED*/
+ 132              	/*#define PNG_WRITE_ANCILLARY_CHUNKS_SUPPORTED*/
+ 133              	/*#define PNG_WRITE_BGR_SUPPORTED*/
+ 134              	/*#define PNG_WRITE_CHECK_FOR_INVALID_INDEX_SUPPORTED*/
+ 135              	/*#define PNG_WRITE_COMPRESSED_TEXT_SUPPORTED*/
+ 136              	/*#define PNG_WRITE_CUSTOMIZE_COMPRESSION_SUPPORTED*/
+ 137              	/*#define PNG_WRITE_CUSTOMIZE_ZTXT_COMPRESSION_SUPPORTED*/
+ 138              	/*#define PNG_WRITE_FILLER_SUPPORTED*/
+ 139              	/*#define PNG_WRITE_FILTER_SUPPORTED*/
+ 140              	/*#define PNG_WRITE_FLUSH_SUPPORTED*/
+ 141              	/*#define PNG_WRITE_GET_PALETTE_MAX_SUPPORTED*/
+ 142              	/*#define PNG_WRITE_INTERLACING_SUPPORTED*/
+ 143              	/*#define PNG_WRITE_INT_FUNCTIONS_SUPPORTED*/
+ 144              	/*#define PNG_WRITE_INVERT_ALPHA_SUPPORTED*/
+ 145              	/*#define PNG_WRITE_INVERT_SUPPORTED*/
+ 146              	/*#define PNG_WRITE_OPTIMIZE_CMF_SUPPORTED*/
+ 147              	/*#define PNG_WRITE_PACKSWAP_SUPPORTED*/
+ 148              	/*#define PNG_WRITE_PACK_SUPPORTED*/
+ 149              	/*#define PNG_WRITE_SHIFT_SUPPORTED*/
+ 150              	/*#define PNG_WRITE_SUPPORTED*/
+ 151              	/*#define PNG_WRITE_SWAP_ALPHA_SUPPORTED*/
+ 152              	/*#define PNG_WRITE_SWAP_SUPPORTED*/
+ 153              	/*#define PNG_WRITE_TEXT_SUPPORTED*/
+ 154              	/*#define PNG_WRITE_TRANSFORMS_SUPPORTED*/
+ 155              	/*#define PNG_WRITE_UNKNOWN_CHUNKS_SUPPORTED*/
+ 156              	/*#define PNG_WRITE_USER_TRANSFORM_SUPPORTED*/
+ 157              	/*#define PNG_WRITE_WEIGHTED_FILTER_SUPPORTED*/
+ 158              	/*#define PNG_WRITE_bKGD_SUPPORTED*/
+ 159              	/*#define PNG_WRITE_cHRM_SUPPORTED*/
+ 160              	/*#define PNG_WRITE_eXIf_SUPPORTED*/
+ 161              	/*#define PNG_WRITE_gAMA_SUPPORTED*/
+ 162              	/*#define PNG_WRITE_hIST_SUPPORTED*/
+ 163              	/*#define PNG_WRITE_iCCP_SUPPORTED*/
+ 164              	/*#define PNG_WRITE_iTXt_SUPPORTED*/
+ 165              	/*#define PNG_WRITE_oFFs_SUPPORTED*/
+ 166              	/*#define PNG_WRITE_pCAL_SUPPORTED*/
+ 167              	/*#define PNG_WRITE_pHYs_SUPPORTED*/
+ 168              	/*#define PNG_WRITE_sBIT_SUPPORTED*/
+ 169              	/*#define PNG_WRITE_sCAL_SUPPORTED*/
+ 170              	/*#define PNG_WRITE_sPLT_SUPPORTED*/
+ 171              	/*#define PNG_WRITE_sRGB_SUPPORTED*/
+ 172              	/*#define PNG_WRITE_tEXt_SUPPORTED*/
+ 173              	/*#define PNG_WRITE_tIME_SUPPORTED*/
+ 174              	/*#define PNG_WRITE_tRNS_SUPPORTED*/
+ 175              	/*#define PNG_WRITE_zTXt_SUPPORTED*/
+ 176              	#define PNG_bKGD_SUPPORTED
+ 177              	#define PNG_cHRM_SUPPORTED
+ 178              	#define PNG_eXIf_SUPPORTED
+ 179              	#define PNG_gAMA_SUPPORTED
+ 180              	#define PNG_hIST_SUPPORTED
+ 181              	#define PNG_iCCP_SUPPORTED
+ 182              	#define PNG_iTXt_SUPPORTED
+ 183              	#define PNG_oFFs_SUPPORTED
+ 184              	#define PNG_pCAL_SUPPORTED
+ 185              	#define PNG_pHYs_SUPPORTED
+ 186              	#define PNG_sBIT_SUPPORTED
+ 187              	#define PNG_sCAL_SUPPORTED
+ 188              	#define PNG_sPLT_SUPPORTED
+ 189              	#define PNG_sRGB_SUPPORTED
+ 190              	#define PNG_tEXt_SUPPORTED
+ 191              	#define PNG_tIME_SUPPORTED
+ 192              	#define PNG_tRNS_SUPPORTED
+ 193              	#define PNG_zTXt_SUPPORTED
+ 194              	/* end of options */
+ 195              	/* settings */
+ 196              	#define PNG_API_RULE 0
+ 197              	#define PNG_DEFAULT_READ_MACROS 1
+ 198              	#define PNG_GAMMA_THRESHOLD_FIXED 5000
+ 199              	#define PNG_IDAT_READ_SIZE PNG_ZBUF_SIZE
+ 200              	#define PNG_INFLATE_BUF_SIZE 1024
+ 201              	#define PNG_LINKAGE_API extern
+ 202              	#define PNG_LINKAGE_CALLBACK extern
+ 203              	#define PNG_LINKAGE_DATA extern
+ 204              	#define PNG_LINKAGE_FUNCTION extern
+ 205              	#define PNG_MAX_GAMMA_8 11
+ 206              	#define PNG_QUANTIZE_BLUE_BITS 5
+ 207              	#define PNG_QUANTIZE_GREEN_BITS 5
+ 208              	#define PNG_QUANTIZE_RED_BITS 5
+ 209              	#define PNG_TEXT_Z_DEFAULT_COMPRESSION (-1)
+ 210              	#define PNG_TEXT_Z_DEFAULT_STRATEGY 0
+ 211              	#define PNG_USER_CHUNK_CACHE_MAX 1000
+ 212              	#define PNG_USER_CHUNK_MALLOC_MAX 8000000
+ 213              	#define PNG_USER_HEIGHT_MAX 1000000
+ 214              	#define PNG_USER_WIDTH_MAX 1000000
+ 215              	#define PNG_ZBUF_SIZE 8192
+ 216              	#define PNG_ZLIB_VERNUM 0 /* unknown */
+ 217              	#define PNG_Z_DEFAULT_COMPRESSION (-1)
+ 218              	#define PNG_Z_DEFAULT_NOFILTER_STRATEGY 0
+ 219              	#define PNG_Z_DEFAULT_STRATEGY 1
+ 220              	#define PNG_sCAL_PRECISION 5
+ 221              	#define PNG_sRGB_PROFILE_CHECKS 2
+ 222              	/* end of settings */
+  73              	#endif
+  74              	
+  75              	/* Local renames may change non-exported API functions from png.h */
+  76              	#if defined(PNG_PREFIX) && !defined(PNGPREFIX_H)
+  77              	#  include "pngprefix.h"
+  78              	#endif
+  79              	
+  80              	#ifdef PNG_USER_CONFIG
+  81              	#  include "pngusr.h"
+  82              	   /* These should have been defined in pngusr.h */
+  83              	#  ifndef PNG_USER_PRIVATEBUILD
+  84              	#    define PNG_USER_PRIVATEBUILD "Custom libpng build"
+  85              	#  endif
+  86              	#  ifndef PNG_USER_DLLFNAME_POSTFIX
+  87              	#    define PNG_USER_DLLFNAME_POSTFIX "Cb"
+  88              	#  endif
+  89              	#endif
+  90              	
+  91              	/* Compile time options.
+  92              	 * =====================
+  93              	 * In a multi-arch build the compiler may compile the code several times for the
+  94              	 * same object module, producing different binaries for different architectures.
+  95              	 * When this happens configure-time setting of the target host options cannot be
+  96              	 * done and this interferes with the handling of the ARM NEON optimizations, and
+  97              	 * possibly other similar optimizations.  Put additional tests here; in general
+  98              	 * this is needed when the same option can be changed at both compile time and
+  99              	 * run time depending on the target OS (i.e. iOS vs Android.)
+ 100              	 *
+ 101              	 * NOTE: symbol prefixing does not pass $(CFLAGS) to the preprocessor, because
+ 102              	 * this is not possible with certain compilers (Oracle SUN OS CC), as a result
+ 103              	 * it is necessary to ensure that all extern functions that *might* be used
+ 104              	 * regardless of $(CFLAGS) get declared in this file.  The test on __ARM_NEON__
+ 105              	 * below is one example of this behavior because it is controlled by the
+ 106              	 * presence or not of -mfpu=neon on the GCC command line, it is possible to do
+ 107              	 * this in $(CC), e.g. "CC=gcc -mfpu=neon", but people who build libpng rarely
+ 108              	 * do this.
+ 109              	 */
+ 110              	#ifndef PNG_ARM_NEON_OPT
+ 111              	   /* ARM NEON optimizations are being controlled by the compiler settings,
+ 112              	    * typically the target FPU.  If the FPU has been set to NEON (-mfpu=neon
+ 113              	    * with GCC) then the compiler will define __ARM_NEON__ and we can rely
+ 114              	    * unconditionally on NEON instructions not crashing, otherwise we must
+ 115              	    * disable use of NEON instructions.
+ 116              	    *
+ 117              	    * NOTE: at present these optimizations depend on 'ALIGNED_MEMORY', so they
+ 118              	    * can only be turned on automatically if that is supported too.  If
+ 119              	    * PNG_ARM_NEON_OPT is set in CPPFLAGS (to >0) then arm/arm_init.c will fail
+ 120              	    * to compile with an appropriate #error if ALIGNED_MEMORY has been turned
+ 121              	    * off.
+ 122              	    *
+ 123              	    * Note that gcc-4.9 defines __ARM_NEON instead of the deprecated
+ 124              	    * __ARM_NEON__, so we check both variants.
+ 125              	    *
+ 126              	    * To disable ARM_NEON optimizations entirely, and skip compiling the
+ 127              	    * associated assembler code, pass --enable-arm-neon=no to configure
+ 128              	    * or put -DPNG_ARM_NEON_OPT=0 in CPPFLAGS.
+ 129              	    */
+ 130              	#  if (defined(__ARM_NEON__) || defined(__ARM_NEON)) && \
+ 131              	   defined(PNG_ALIGNED_MEMORY_SUPPORTED)
+ 132              	#     define PNG_ARM_NEON_OPT 2
+ 133              	#  else
+ 134              	#     define PNG_ARM_NEON_OPT 0
+ 135              	#  endif
+ 136              	#endif
+ 137              	
+ 138              	#if PNG_ARM_NEON_OPT > 0
+ 139              	   /* NEON optimizations are to be at least considered by libpng, so enable the
+ 140              	    * callbacks to do this.
+ 141              	    */
+ 142              	#  define PNG_FILTER_OPTIMIZATIONS png_init_filter_functions_neon
+ 143              	
+ 144              	   /* By default the 'intrinsics' code in arm/filter_neon_intrinsics.c is used
+ 145              	    * if possible - if __ARM_NEON__ is set and the compiler version is not known
+ 146              	    * to be broken.  This is controlled by PNG_ARM_NEON_IMPLEMENTATION which can
+ 147              	    * be:
+ 148              	    *
+ 149              	    *    1  The intrinsics code (the default with __ARM_NEON__)
+ 150              	    *    2  The hand coded assembler (the default without __ARM_NEON__)
+ 151              	    *
+ 152              	    * It is possible to set PNG_ARM_NEON_IMPLEMENTATION in CPPFLAGS, however
+ 153              	    * this is *NOT* supported and may cease to work even after a minor revision
+ 154              	    * to libpng.  It *is* valid to do this for testing purposes, e.g. speed
+ 155              	    * testing or a new compiler, but the results should be communicated to the
+ 156              	    * libpng implementation list for incorporation in the next minor release.
+ 157              	    */
+ 158              	#  ifndef PNG_ARM_NEON_IMPLEMENTATION
+ 159              	#     if defined(__ARM_NEON__) || defined(__ARM_NEON)
+ 160              	#        if defined(__clang__)
+ 161              	            /* At present it is unknown by the libpng developers which versions
+ 162              	             * of clang support the intrinsics, however some or perhaps all
+ 163              	             * versions do not work with the assembler so this may be
+ 164              	             * irrelevant, so just use the default (do nothing here.)
+ 165              	             */
+ 166              	#        elif defined(__GNUC__)
+ 167              	            /* GCC 4.5.4 NEON support is known to be broken.  4.6.3 is known to
+ 168              	             * work, so if this *is* GCC, or G++, look for a version >4.5
+ 169              	             */
+ 170              	#           if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 6)
+ 171              	#              define PNG_ARM_NEON_IMPLEMENTATION 2
+ 172              	#           endif /* no GNUC support */
+ 173              	#        endif /* __GNUC__ */
+ 174              	#     else /* !defined __ARM_NEON__ */
+ 175              	         /* The 'intrinsics' code simply won't compile without this -mfpu=neon:
+ 176              	          */
+ 177              	#        define PNG_ARM_NEON_IMPLEMENTATION 2
+ 178              	#     endif /* __ARM_NEON__ */
+ 179              	#  endif /* !PNG_ARM_NEON_IMPLEMENTATION */
+ 180              	
+ 181              	#  ifndef PNG_ARM_NEON_IMPLEMENTATION
+ 182              	      /* Use the intrinsics code by default. */
+ 183              	#     define PNG_ARM_NEON_IMPLEMENTATION 1
+ 184              	#  endif
+ 185              	#endif /* PNG_ARM_NEON_OPT > 0 */
+ 186              	
+ 187              	#ifndef PNG_MIPS_MSA_OPT
+ 188              	#  if defined(__mips_msa) && (__mips_isa_rev >= 5) && defined(PNG_ALIGNED_MEMORY_SUPPORTED)
+ 189              	#     define PNG_MIPS_MSA_OPT 2
+ 190              	#  else
+ 191              	#     define PNG_MIPS_MSA_OPT 0
+ 192              	#  endif
+ 193              	#endif
+ 194              	
+ 195              	#ifndef PNG_POWERPC_VSX_OPT
+ 196              	#  if defined(__PPC64__) && defined(__ALTIVEC__) && defined(__VSX__)
+ 197              	#     define PNG_POWERPC_VSX_OPT 2
+ 198              	#  else
+ 199              	#     define PNG_POWERPC_VSX_OPT 0
+ 200              	#  endif
+ 201              	#endif
+ 202              	
+ 203              	#ifndef PNG_INTEL_SSE_OPT
+ 204              	#   ifdef PNG_INTEL_SSE
+ 205              	      /* Only check for SSE if the build configuration has been modified to
+ 206              	       * enable SSE optimizations.  This means that these optimizations will
+ 207              	       * be off by default.  See contrib/intel for more details.
+ 208              	       */
+ 209              	#     if defined(__SSE4_1__) || defined(__AVX__) || defined(__SSSE3__) || \
+ 210              	       defined(__SSE2__) || defined(_M_X64) || defined(_M_AMD64) || \
+ 211              	       (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+ 212              	#         define PNG_INTEL_SSE_OPT 1
+ 213              	#      else
+ 214              	#         define PNG_INTEL_SSE_OPT 0
+ 215              	#      endif
+ 216              	#   else
+ 217              	#      define PNG_INTEL_SSE_OPT 0
+ 218              	#   endif
+ 219              	#endif
+ 220              	
+ 221              	#if PNG_INTEL_SSE_OPT > 0
+ 222              	#   ifndef PNG_INTEL_SSE_IMPLEMENTATION
+ 223              	#      if defined(__SSE4_1__) || defined(__AVX__)
+ 224              	          /* We are not actually using AVX, but checking for AVX is the best
+ 225              	             way we can detect SSE4.1 and SSSE3 on MSVC.
+ 226              	          */
+ 227              	#         define PNG_INTEL_SSE_IMPLEMENTATION 3
+ 228              	#      elif defined(__SSSE3__)
+ 229              	#         define PNG_INTEL_SSE_IMPLEMENTATION 2
+ 230              	#      elif defined(__SSE2__) || defined(_M_X64) || defined(_M_AMD64) || \
+ 231              	       (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+ 232              	#         define PNG_INTEL_SSE_IMPLEMENTATION 1
+ 233              	#      else
+ 234              	#         define PNG_INTEL_SSE_IMPLEMENTATION 0
+ 235              	#      endif
+ 236              	#   endif
+ 237              	
+ 238              	#   if PNG_INTEL_SSE_IMPLEMENTATION > 0
+ 239              	#      define PNG_FILTER_OPTIMIZATIONS png_init_filter_functions_sse2
+ 240              	#   endif
+ 241              	#else
+ 242              	#   define PNG_INTEL_SSE_IMPLEMENTATION 0
+ 243              	#endif
+ 244              	
+ 245              	#if PNG_MIPS_MSA_OPT > 0
+ 246              	#  define PNG_FILTER_OPTIMIZATIONS png_init_filter_functions_msa
+ 247              	#  ifndef PNG_MIPS_MSA_IMPLEMENTATION
+ 248              	#     if defined(__mips_msa)
+ 249              	#        if defined(__clang__)
+ 250              	#        elif defined(__GNUC__)
+ 251              	#           if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 7)
+ 252              	#              define PNG_MIPS_MSA_IMPLEMENTATION 2
+ 253              	#           endif /* no GNUC support */
+ 254              	#        endif /* __GNUC__ */
+ 255              	#     else /* !defined __mips_msa */
+ 256              	#        define PNG_MIPS_MSA_IMPLEMENTATION 2
+ 257              	#     endif /* __mips_msa */
+ 258              	#  endif /* !PNG_MIPS_MSA_IMPLEMENTATION */
+ 259              	
+ 260              	#  ifndef PNG_MIPS_MSA_IMPLEMENTATION
+ 261              	#     define PNG_MIPS_MSA_IMPLEMENTATION 1
+ 262              	#  endif
+ 263              	#endif /* PNG_MIPS_MSA_OPT > 0 */
+ 264              	
+ 265              	#if PNG_POWERPC_VSX_OPT > 0
+ 266              	#  define PNG_FILTER_OPTIMIZATIONS png_init_filter_functions_vsx
+ 267              	#  define PNG_POWERPC_VSX_IMPLEMENTATION 1
+ 268              	#endif
+ 269              	
+ 270              	
+ 271              	/* Is this a build of a DLL where compilation of the object modules requires
+ 272              	 * different preprocessor settings to those required for a simple library?  If
+ 273              	 * so PNG_BUILD_DLL must be set.
+ 274              	 *
+ 275              	 * If libpng is used inside a DLL but that DLL does not export the libpng APIs
+ 276              	 * PNG_BUILD_DLL must not be set.  To avoid the code below kicking in build a
+ 277              	 * static library of libpng then link the DLL against that.
+ 278              	 */
+ 279              	#ifndef PNG_BUILD_DLL
+ 280              	#  ifdef DLL_EXPORT
+ 281              	      /* This is set by libtool when files are compiled for a DLL; libtool
+ 282              	       * always compiles twice, even on systems where it isn't necessary.  Set
+ 283              	       * PNG_BUILD_DLL in case it is necessary:
+ 284              	       */
+ 285              	#     define PNG_BUILD_DLL
+ 286              	#  else
+ 287              	#     ifdef _WINDLL
+ 288              	         /* This is set by the Microsoft Visual Studio IDE in projects that
+ 289              	          * build a DLL.  It can't easily be removed from those projects (it
+ 290              	          * isn't visible in the Visual Studio UI) so it is a fairly reliable
+ 291              	          * indication that PNG_IMPEXP needs to be set to the DLL export
+ 292              	          * attributes.
+ 293              	          */
+ 294              	#        define PNG_BUILD_DLL
+ 295              	#     else
+ 296              	#        ifdef __DLL__
+ 297              	            /* This is set by the Borland C system when compiling for a DLL
+ 298              	             * (as above.)
+ 299              	             */
+ 300              	#           define PNG_BUILD_DLL
+ 301              	#        else
+ 302              	            /* Add additional compiler cases here. */
+ 303              	#        endif
+ 304              	#     endif
+ 305              	#  endif
+ 306              	#endif /* Setting PNG_BUILD_DLL if required */
+ 307              	
+ 308              	/* See pngconf.h for more details: the builder of the library may set this on
+ 309              	 * the command line to the right thing for the specific compilation system or it
+ 310              	 * may be automagically set above (at present we know of no system where it does
+ 311              	 * need to be set on the command line.)
+ 312              	 *
+ 313              	 * PNG_IMPEXP must be set here when building the library to prevent pngconf.h
+ 314              	 * setting it to the "import" setting for a DLL build.
+ 315              	 */
+ 316              	#ifndef PNG_IMPEXP
+ 317              	#  ifdef PNG_BUILD_DLL
+ 318              	#     define PNG_IMPEXP PNG_DLL_EXPORT
+ 319              	#  else
+ 320              	      /* Not building a DLL, or the DLL doesn't require specific export
+ 321              	       * definitions.
+ 322              	       */
+ 323              	#     define PNG_IMPEXP
+ 324              	#  endif
+ 325              	#endif
+ 326              	
+ 327              	/* No warnings for private or deprecated functions in the build: */
+ 328              	#ifndef PNG_DEPRECATED
+ 329              	#  define PNG_DEPRECATED
+ 330              	#endif
+ 331              	#ifndef PNG_PRIVATE
+ 332              	#  define PNG_PRIVATE
+ 333              	#endif
+ 334              	
+ 335              	/* Symbol preprocessing support.
+ 336              	 *
+ 337              	 * To enable listing global, but internal, symbols the following macros should
+ 338              	 * always be used to declare an extern data or function object in this file.
+ 339              	 */
+ 340              	#ifndef PNG_INTERNAL_DATA
+ 341              	#  define PNG_INTERNAL_DATA(type, name, array) PNG_LINKAGE_DATA type name array
+ 342              	#endif
+ 343              	
+ 344              	#ifndef PNG_INTERNAL_FUNCTION
+ 345              	#  define PNG_INTERNAL_FUNCTION(type, name, args, attributes)\
+ 346              	      PNG_LINKAGE_FUNCTION PNG_FUNCTION(type, name, args, PNG_EMPTY attributes)
+ 347              	#endif
+ 348              	
+ 349              	#ifndef PNG_INTERNAL_CALLBACK
+ 350              	#  define PNG_INTERNAL_CALLBACK(type, name, args, attributes)\
+ 351              	      PNG_LINKAGE_CALLBACK PNG_FUNCTION(type, (PNGCBAPI name), args,\
+ 352              	         PNG_EMPTY attributes)
+ 353              	#endif
+ 354              	
+ 355              	/* If floating or fixed point APIs are disabled they may still be compiled
+ 356              	 * internally.  To handle this make sure they are declared as the appropriate
+ 357              	 * internal extern function (otherwise the symbol prefixing stuff won't work and
+ 358              	 * the functions will be used without definitions.)
+ 359              	 *
+ 360              	 * NOTE: although all the API functions are declared here they are not all
+ 361              	 * actually built!  Because the declarations are still made it is necessary to
+ 362              	 * fake out types that they depend on.
+ 363              	 */
+ 364              	#ifndef PNG_FP_EXPORT
+ 365              	#  ifndef PNG_FLOATING_POINT_SUPPORTED
+ 366              	#     define PNG_FP_EXPORT(ordinal, type, name, args)\
+ 367              	         PNG_INTERNAL_FUNCTION(type, name, args, PNG_EMPTY);
+ 368              	#     ifndef PNG_VERSION_INFO_ONLY
+ 369              	         typedef struct png_incomplete png_double;
+ 370              	         typedef png_double*           png_doublep;
+ 371              	         typedef const png_double*     png_const_doublep;
+ 372              	         typedef png_double**          png_doublepp;
+ 373              	#     endif
+ 374              	#  endif
+ 375              	#endif
+ 376              	#ifndef PNG_FIXED_EXPORT
+ 377              	#  ifndef PNG_FIXED_POINT_SUPPORTED
+ 378              	#     define PNG_FIXED_EXPORT(ordinal, type, name, args)\
+ 379              	         PNG_INTERNAL_FUNCTION(type, name, args, PNG_EMPTY);
+ 380              	#  endif
+ 381              	#endif
+ 382              	
+ 383              	#include "png.h"
+   1              	
+   2              	/* png.h - header file for PNG reference library
+   3              	 *
+   4              	 * libpng version 1.6.35, July 15, 2018
+   5              	 *
+   6              	 * Copyright (c) 1998-2002,2004,2006-2018 Glenn Randers-Pehrson
+   7              	 * (Version 0.96 Copyright (c) 1996, 1997 Andreas Dilger)
+   8              	 * (Version 0.88 Copyright (c) 1995, 1996 Guy Eric Schalnat, Group 42, Inc.)
+   9              	 *
+  10              	 * This code is released under the libpng license (See LICENSE, below)
+  11              	 *
+  12              	 * Authors and maintainers:
+  13              	 *   libpng versions 0.71, May 1995, through 0.88, January 1996: Guy Schalnat
+  14              	 *   libpng versions 0.89, June 1996, through 0.96, May 1997: Andreas Dilger
+  15              	 *   libpng versions 0.97, January 1998, through 1.6.35, July 15, 2018:
+  16              	 *     Glenn Randers-Pehrson.
+  17              	 *   See also "Contributing Authors", below.
+  18              	 */
+  19              	
+  20              	/*
+  21              	 * COPYRIGHT NOTICE, DISCLAIMER, and LICENSE:
+  22              	 *
+  23              	 * If you modify libpng you may insert additional notices immediately following
+  24              	 * this sentence.
+  25              	 *
+  26              	 * This code is released under the libpng license.
+  27              	 *
+  28              	 * libpng versions 1.0.7, July 1, 2000 through 1.6.35, July 15, 2018 are
+  29              	 * Copyright (c) 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson, are
+  30              	 * derived from libpng-1.0.6, and are distributed according to the same
+  31              	 * disclaimer and license as libpng-1.0.6 with the following individuals
+  32              	 * added to the list of Contributing Authors:
+  33              	 *
+  34              	 *    Simon-Pierre Cadieux
+  35              	 *    Eric S. Raymond
+  36              	 *    Mans Rullgard
+  37              	 *    Cosmin Truta
+  38              	 *    Gilles Vollant
+  39              	 *    James Yu
+  40              	 *    Mandar Sahastrabuddhe
+  41              	 *    Google Inc.
+  42              	 *    Vadim Barkov
+  43              	 *
+  44              	 * and with the following additions to the disclaimer:
+  45              	 *
+  46              	 *    There is no warranty against interference with your enjoyment of the
+  47              	 *    library or against infringement.  There is no warranty that our
+  48              	 *    efforts or the library will fulfill any of your particular purposes
+  49              	 *    or needs.  This library is provided with all faults, and the entire
+  50              	 *    risk of satisfactory quality, performance, accuracy, and effort is with
+  51              	 *    the user.
+  52              	 *
+  53              	 * Some files in the "contrib" directory and some configure-generated
+  54              	 * files that are distributed with libpng have other copyright owners and
+  55              	 * are released under other open source licenses.
+  56              	 *
+  57              	 * libpng versions 0.97, January 1998, through 1.0.6, March 20, 2000, are
+  58              	 * Copyright (c) 1998-2000 Glenn Randers-Pehrson, are derived from
+  59              	 * libpng-0.96, and are distributed according to the same disclaimer and
+  60              	 * license as libpng-0.96, with the following individuals added to the list
+  61              	 * of Contributing Authors:
+  62              	 *
+  63              	 *    Tom Lane
+  64              	 *    Glenn Randers-Pehrson
+  65              	 *    Willem van Schaik
+  66              	 *
+  67              	 * libpng versions 0.89, June 1996, through 0.96, May 1997, are
+  68              	 * Copyright (c) 1996-1997 Andreas Dilger, are derived from libpng-0.88,
+  69              	 * and are distributed according to the same disclaimer and license as
+  70              	 * libpng-0.88, with the following individuals added to the list of
+  71              	 * Contributing Authors:
+  72              	 *
+  73              	 *    John Bowler
+  74              	 *    Kevin Bracey
+  75              	 *    Sam Bushell
+  76              	 *    Magnus Holmgren
+  77              	 *    Greg Roelofs
+  78              	 *    Tom Tanner
+  79              	 *
+  80              	 * Some files in the "scripts" directory have other copyright owners
+  81              	 * but are released under this license.
+  82              	 *
+  83              	 * libpng versions 0.5, May 1995, through 0.88, January 1996, are
+  84              	 * Copyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.
+  85              	 *
+  86              	 * For the purposes of this copyright and license, "Contributing Authors"
+  87              	 * is defined as the following set of individuals:
+  88              	 *
+  89              	 *    Andreas Dilger
+  90              	 *    Dave Martindale
+  91              	 *    Guy Eric Schalnat
+  92              	 *    Paul Schmidt
+  93              	 *    Tim Wegner
+  94              	 *
+  95              	 * The PNG Reference Library is supplied "AS IS".  The Contributing Authors
+  96              	 * and Group 42, Inc. disclaim all warranties, expressed or implied,
+  97              	 * including, without limitation, the warranties of merchantability and of
+  98              	 * fitness for any purpose.  The Contributing Authors and Group 42, Inc.
+  99              	 * assume no liability for direct, indirect, incidental, special, exemplary,
+ 100              	 * or consequential damages, which may result from the use of the PNG
+ 101              	 * Reference Library, even if advised of the possibility of such damage.
+ 102              	 *
+ 103              	 * Permission is hereby granted to use, copy, modify, and distribute this
+ 104              	 * source code, or portions hereof, for any purpose, without fee, subject
+ 105              	 * to the following restrictions:
+ 106              	 *
+ 107              	 *   1. The origin of this source code must not be misrepresented.
+ 108              	 *
+ 109              	 *   2. Altered versions must be plainly marked as such and must not
+ 110              	 *      be misrepresented as being the original source.
+ 111              	 *
+ 112              	 *   3. This Copyright notice may not be removed or altered from any
+ 113              	 *      source or altered source distribution.
+ 114              	 *
+ 115              	 * The Contributing Authors and Group 42, Inc. specifically permit, without
+ 116              	 * fee, and encourage the use of this source code as a component to
+ 117              	 * supporting the PNG file format in commercial products.  If you use this
+ 118              	 * source code in a product, acknowledgment is not required but would be
+ 119              	 * appreciated.
+ 120              	 *
+ 121              	 * END OF COPYRIGHT NOTICE, DISCLAIMER, and LICENSE.
+ 122              	 *
+ 123              	 * TRADEMARK:
+ 124              	 *
+ 125              	 * The name "libpng" has not been registered by the Copyright owner
+ 126              	 * as a trademark in any jurisdiction.  However, because libpng has
+ 127              	 * been distributed and maintained world-wide, continually since 1995,
+ 128              	 * the Copyright owner claims "common-law trademark protection" in any
+ 129              	 * jurisdiction where common-law trademark is recognized.
+ 130              	 *
+ 131              	 * OSI CERTIFICATION:
+ 132              	 *
+ 133              	 * Libpng is OSI Certified Open Source Software.  OSI Certified Open Source is
+ 134              	 * a certification mark of the Open Source Initiative. OSI has not addressed
+ 135              	 * the additional disclaimers inserted at version 1.0.7.
+ 136              	 *
+ 137              	 * EXPORT CONTROL:
+ 138              	 *
+ 139              	 * The Copyright owner believes that the Export Control Classification
+ 140              	 * Number (ECCN) for libpng is EAR99, which means not subject to export
+ 141              	 * controls or International Traffic in Arms Regulations (ITAR) because
+ 142              	 * it is open source, publicly available software, that does not contain
+ 143              	 * any encryption software.  See the EAR, paragraphs 734.3(b)(3) and
+ 144              	 * 734.7(b).
+ 145              	 */
+ 146              	
+ 147              	/*
+ 148              	 * A "png_get_copyright" function is available, for convenient use in "about"
+ 149              	 * boxes and the like:
+ 150              	 *
+ 151              	 *    printf("%s", png_get_copyright(NULL));
+ 152              	 *
+ 153              	 * Also, the PNG logo (in PNG format, of course) is supplied in the
+ 154              	 * files "pngbar.png" and "pngbar.jpg (88x31) and "pngnow.png" (98x31).
+ 155              	 */
+ 156              	
+ 157              	/*
+ 158              	 * The contributing authors would like to thank all those who helped
+ 159              	 * with testing, bug fixes, and patience.  This wouldn't have been
+ 160              	 * possible without all of you.
+ 161              	 *
+ 162              	 * Thanks to Frank J. T. Wojcik for helping with the documentation.
+ 163              	 */
+ 164              	
+ 165              	/* Note about libpng version numbers:
+ 166              	 *
+ 167              	 *    Due to various miscommunications, unforeseen code incompatibilities
+ 168              	 *    and occasional factors outside the authors' control, version numbering
+ 169              	 *    on the library has not always been consistent and straightforward.
+ 170              	 *    The following table summarizes matters since version 0.89c, which was
+ 171              	 *    the first widely used release:
+ 172              	 *
+ 173              	 *    source                 png.h  png.h  shared-lib
+ 174              	 *    version                string   int  version
+ 175              	 *    -------                ------ -----  ----------
+ 176              	 *    0.89c "1.0 beta 3"     0.89      89  1.0.89
+ 177              	 *    0.90  "1.0 beta 4"     0.90      90  0.90  [should have been 2.0.90]
+ 178              	 *    0.95  "1.0 beta 5"     0.95      95  0.95  [should have been 2.0.95]
+ 179              	 *    0.96  "1.0 beta 6"     0.96      96  0.96  [should have been 2.0.96]
+ 180              	 *    0.97b "1.00.97 beta 7" 1.00.97   97  1.0.1 [should have been 2.0.97]
+ 181              	 *    0.97c                  0.97      97  2.0.97
+ 182              	 *    0.98                   0.98      98  2.0.98
+ 183              	 *    0.99                   0.99      98  2.0.99
+ 184              	 *    0.99a-m                0.99      99  2.0.99
+ 185              	 *    1.00                   1.00     100  2.1.0 [100 should be 10000]
+ 186              	 *    1.0.0      (from here on, the   100  2.1.0 [100 should be 10000]
+ 187              	 *    1.0.1       png.h string is   10001  2.1.0
+ 188              	 *    1.0.1a-e    identical to the  10002  from here on, the shared library
+ 189              	 *    1.0.2       source version)   10002  is 2.V where V is the source code
+ 190              	 *    1.0.2a-b                      10003  version, except as noted.
+ 191              	 *    1.0.3                         10003
+ 192              	 *    1.0.3a-d                      10004
+ 193              	 *    1.0.4                         10004
+ 194              	 *    1.0.4a-f                      10005
+ 195              	 *    1.0.5 (+ 2 patches)           10005
+ 196              	 *    1.0.5a-d                      10006
+ 197              	 *    1.0.5e-r                      10100 (not source compatible)
+ 198              	 *    1.0.5s-v                      10006 (not binary compatible)
+ 199              	 *    1.0.6 (+ 3 patches)           10006 (still binary incompatible)
+ 200              	 *    1.0.6d-f                      10007 (still binary incompatible)
+ 201              	 *    1.0.6g                        10007
+ 202              	 *    1.0.6h                        10007  10.6h (testing xy.z so-numbering)
+ 203              	 *    1.0.6i                        10007  10.6i
+ 204              	 *    1.0.6j                        10007  2.1.0.6j (incompatible with 1.0.0)
+ 205              	 *    1.0.7beta11-14        DLLNUM  10007  2.1.0.7beta11-14 (binary compatible)
+ 206              	 *    1.0.7beta15-18           1    10007  2.1.0.7beta15-18 (binary compatible)
+ 207              	 *    1.0.7rc1-2               1    10007  2.1.0.7rc1-2 (binary compatible)
+ 208              	 *    1.0.7                    1    10007  (still compatible)
+ 209              	 *    ...
+ 210              	 *    1.0.19                  10    10019  10.so.0.19[.0]
+ 211              	 *    ...
+ 212              	 *    1.2.59                  13    10257  12.so.0.59[.0]
+ 213              	 *    ...
+ 214              	 *    1.5.30                  15    10527  15.so.15.30[.0]
+ 215              	 *    ...
+ 216              	 *    1.6.35                  16    10635  16.so.16.35[.0]
+ 217              	 *
+ 218              	 *    Henceforth the source version will match the shared-library major
+ 219              	 *    and minor numbers; the shared-library major version number will be
+ 220              	 *    used for changes in backward compatibility, as it is intended.  The
+ 221              	 *    PNG_LIBPNG_VER macro, which is not used within libpng but is available
+ 222              	 *    for applications, is an unsigned integer of the form xyyzz corresponding
+ 223              	 *    to the source version x.y.z (leading zeros in y and z).  Beta versions
+ 224              	 *    were given the previous public release number plus a letter, until
+ 225              	 *    version 1.0.6j; from then on they were given the upcoming public
+ 226              	 *    release number plus "betaNN" or "rcNN".
+ 227              	 *
+ 228              	 *    Binary incompatibility exists only when applications make direct access
+ 229              	 *    to the info_ptr or png_ptr members through png.h, and the compiled
+ 230              	 *    application is loaded with a different version of the library.
+ 231              	 *
+ 232              	 *    DLLNUM will change each time there are forward or backward changes
+ 233              	 *    in binary compatibility (e.g., when a new feature is added).
+ 234              	 *
+ 235              	 * See libpng.txt or libpng.3 for more information.  The PNG specification
+ 236              	 * is available as a W3C Recommendation and as an ISO Specification,
+ 237              	 * <https://www.w3.org/TR/2003/REC-PNG-20031110/
+ 238              	 */
+ 239              	
+ 240              	/*
+ 241              	 * Y2K compliance in libpng:
+ 242              	 * =========================
+ 243              	 *
+ 244              	 *    July 15, 2018
+ 245              	 *
+ 246              	 *    Since the PNG Development group is an ad-hoc body, we can't make
+ 247              	 *    an official declaration.
+ 248              	 *
+ 249              	 *    This is your unofficial assurance that libpng from version 0.71 and
+ 250              	 *    upward through 1.6.35 are Y2K compliant.  It is my belief that
+ 251              	 *    earlier versions were also Y2K compliant.
+ 252              	 *
+ 253              	 *    Libpng only has two year fields.  One is a 2-byte unsigned integer
+ 254              	 *    that will hold years up to 65535.  The other, which is deprecated,
+ 255              	 *    holds the date in text format, and will hold years up to 9999.
+ 256              	 *
+ 257              	 *    The integer is
+ 258              	 *        "png_uint_16 year" in png_time_struct.
+ 259              	 *
+ 260              	 *    The string is
+ 261              	 *        "char time_buffer[29]" in png_struct.  This is no longer used
+ 262              	 *    in libpng-1.6.x and will be removed from libpng-1.7.0.
+ 263              	 *
+ 264              	 *    There are seven time-related functions:
+ 265              	 *        png.c: png_convert_to_rfc_1123_buffer() in png.c
+ 266              	 *          (formerly png_convert_to_rfc_1123() prior to libpng-1.5.x and
+ 267              	 *          png_convert_to_rfc_1152() in error prior to libpng-0.98)
+ 268              	 *        png_convert_from_struct_tm() in pngwrite.c, called in pngwrite.c
+ 269              	 *        png_convert_from_time_t() in pngwrite.c
+ 270              	 *        png_get_tIME() in pngget.c
+ 271              	 *        png_handle_tIME() in pngrutil.c, called in pngread.c
+ 272              	 *        png_set_tIME() in pngset.c
+ 273              	 *        png_write_tIME() in pngwutil.c, called in pngwrite.c
+ 274              	 *
+ 275              	 *    All handle dates properly in a Y2K environment.  The
+ 276              	 *    png_convert_from_time_t() function calls gmtime() to convert from system
+ 277              	 *    clock time, which returns (year - 1900), which we properly convert to
+ 278              	 *    the full 4-digit year.  There is a possibility that libpng applications
+ 279              	 *    are not passing 4-digit years into the png_convert_to_rfc_1123_buffer()
+ 280              	 *    function, or that they are incorrectly passing only a 2-digit year
+ 281              	 *    instead of "year - 1900" into the png_convert_from_struct_tm() function,
+ 282              	 *    but this is not under our control.  The libpng documentation has always
+ 283              	 *    stated that it works with 4-digit years, and the APIs have been
+ 284              	 *    documented as such.
+ 285              	 *
+ 286              	 *    The tIME chunk itself is also Y2K compliant.  It uses a 2-byte unsigned
+ 287              	 *    integer to hold the year, and can hold years as large as 65535.
+ 288              	 *
+ 289              	 *    zlib, upon which libpng depends, is also Y2K compliant.  It contains
+ 290              	 *    no date-related code.
+ 291              	 *
+ 292              	 *       Glenn Randers-Pehrson
+ 293              	 *       libpng maintainer
+ 294              	 *       PNG Development Group
+ 295              	 */
+ 296              	
+ 297              	#ifndef PNG_H
+ 298              	#define PNG_H
+ 299              	
+ 300              	/* This is not the place to learn how to use libpng. The file libpng-manual.txt
+ 301              	 * describes how to use libpng, and the file example.c summarizes it
+ 302              	 * with some code on which to build.  This file is useful for looking
+ 303              	 * at the actual function definitions and structure components.  If that
+ 304              	 * file has been stripped from your copy of libpng, you can find it at
+ 305              	 * <http://www.libpng.org/pub/png/libpng-manual.txt>
+ 306              	 *
+ 307              	 * If you just need to read a PNG file and don't want to read the documentation
+ 308              	 * skip to the end of this file and read the section entitled 'simplified API'.
+ 309              	 */
+ 310              	
+ 311              	/* Version information for png.h - this should match the version in png.c */
+ 312              	#define PNG_LIBPNG_VER_STRING "1.6.35"
+ 313              	#define PNG_HEADER_VERSION_STRING " libpng version 1.6.35 - July 15, 2018\n"
+ 314              	
+ 315              	#define PNG_LIBPNG_VER_SONUM   16
+ 316              	#define PNG_LIBPNG_VER_DLLNUM  16
+ 317              	
+ 318              	/* These should match the first 3 components of PNG_LIBPNG_VER_STRING: */
+ 319              	#define PNG_LIBPNG_VER_MAJOR   1
+ 320              	#define PNG_LIBPNG_VER_MINOR   6
+ 321              	#define PNG_LIBPNG_VER_RELEASE 35
+ 322              	
+ 323              	/* This should match the numeric part of the final component of
+ 324              	 * PNG_LIBPNG_VER_STRING, omitting any leading zero:
+ 325              	 */
+ 326              	
+ 327              	#define PNG_LIBPNG_VER_BUILD  02
+ 328              	
+ 329              	/* Release Status */
+ 330              	#define PNG_LIBPNG_BUILD_ALPHA    1
+ 331              	#define PNG_LIBPNG_BUILD_BETA     2
+ 332              	#define PNG_LIBPNG_BUILD_RC       3
+ 333              	#define PNG_LIBPNG_BUILD_STABLE   4
+ 334              	#define PNG_LIBPNG_BUILD_RELEASE_STATUS_MASK 7
+ 335              	
+ 336              	/* Release-Specific Flags */
+ 337              	#define PNG_LIBPNG_BUILD_PATCH    8 /* Can be OR'ed with
+ 338              	                                       PNG_LIBPNG_BUILD_STABLE only */
+ 339              	#define PNG_LIBPNG_BUILD_PRIVATE 16 /* Cannot be OR'ed with
+ 340              	                                       PNG_LIBPNG_BUILD_SPECIAL */
+ 341              	#define PNG_LIBPNG_BUILD_SPECIAL 32 /* Cannot be OR'ed with
+ 342              	                                       PNG_LIBPNG_BUILD_PRIVATE */
+ 343              	
+ 344              	#define PNG_LIBPNG_BUILD_BASE_TYPE PNG_LIBPNG_BUILD_BETA
+ 345              	
+ 346              	/* Careful here.  At one time, Guy wanted to use 082, but that would be octal.
+ 347              	 * We must not include leading zeros.
+ 348              	 * Versions 0.7 through 1.0.0 were in the range 0 to 100 here (only
+ 349              	 * version 1.0.0 was mis-numbered 100 instead of 10000).  From
+ 350              	 * version 1.0.1 it's    xxyyzz, where x=major, y=minor, z=release
+ 351              	 */
+ 352              	#define PNG_LIBPNG_VER 10635 /* 1.6.35 */
+ 353              	
+ 354              	/* Library configuration: these options cannot be changed after
+ 355              	 * the library has been built.
+ 356              	 */
+ 357              	#ifndef PNGLCONF_H
+ 358              	/* If pnglibconf.h is missing, you can
+ 359              	 * copy scripts/pnglibconf.h.prebuilt to pnglibconf.h
+ 360              	 */
+ 361              	#   include "pnglibconf.h"
+ 362              	#endif
+ 363              	
+ 364              	#ifndef PNG_VERSION_INFO_ONLY
+ 365              	/* Machine specific configuration. */
+ 366              	#  include "pngconf.h"
+ 367              	#endif
+ 368              	
+ 369              	/*
+ 370              	 * Added at libpng-1.2.8
+ 371              	 *
+ 372              	 * Ref MSDN: Private as priority over Special
+ 373              	 * VS_FF_PRIVATEBUILD File *was not* built using standard release
+ 374              	 * procedures. If this value is given, the StringFileInfo block must
+ 375              	 * contain a PrivateBuild string.
+ 376              	 *
+ 377              	 * VS_FF_SPECIALBUILD File *was* built by the original company using
+ 378              	 * standard release procedures but is a variation of the standard
+ 379              	 * file of the same version number. If this value is given, the
+ 380              	 * StringFileInfo block must contain a SpecialBuild string.
+ 381              	 */
+ 382              	
+ 383              	#ifdef PNG_USER_PRIVATEBUILD /* From pnglibconf.h */
+ 384              	#  define PNG_LIBPNG_BUILD_TYPE \
+ 385              	       (PNG_LIBPNG_BUILD_BASE_TYPE | PNG_LIBPNG_BUILD_PRIVATE)
+ 386              	#else
+ 387              	#  ifdef PNG_LIBPNG_SPECIALBUILD
+ 388              	#    define PNG_LIBPNG_BUILD_TYPE \
+ 389              	         (PNG_LIBPNG_BUILD_BASE_TYPE | PNG_LIBPNG_BUILD_SPECIAL)
+ 390              	#  else
+ 391              	#    define PNG_LIBPNG_BUILD_TYPE (PNG_LIBPNG_BUILD_BASE_TYPE)
+ 392              	#  endif
+ 384              	
+ 385              	/* pngconf.h does not set PNG_DLL_EXPORT unless it is required, so: */
+ 386              	#ifndef PNG_DLL_EXPORT
+ 387              	#  define PNG_DLL_EXPORT
+ 388              	#endif
+ 389              	
+ 390              	/* This is a global switch to set the compilation for an installed system
+ 391              	 * (a release build).  It can be set for testing debug builds to ensure that
+ 392              	 * they will compile when the build type is switched to RC or STABLE, the
+ 393              	 * default is just to use PNG_LIBPNG_BUILD_BASE_TYPE.  Set this in CPPFLAGS
+ 394              	 * with either:
+ 395              	 *
+ 396              	 *   -DPNG_RELEASE_BUILD Turns on the release compile path
+ 397              	 *   -DPNG_RELEASE_BUILD=0 Turns it off
+ 398              	 * or in your pngusr.h with
+ 399              	 *   #define PNG_RELEASE_BUILD=1 Turns on the release compile path
+ 400              	 *   #define PNG_RELEASE_BUILD=0 Turns it off
+ 401              	 */
+ 402              	#ifndef PNG_RELEASE_BUILD
+ 403              	#  define PNG_RELEASE_BUILD (PNG_LIBPNG_BUILD_BASE_TYPE >= PNG_LIBPNG_BUILD_RC)
+ 404              	#endif
+ 405              	
+ 406              	/* SECURITY and SAFETY:
+ 407              	 *
+ 408              	 * libpng is built with support for internal limits on image dimensions and
+ 409              	 * memory usage.  These are documented in scripts/pnglibconf.dfa of the
+ 410              	 * source and recorded in the machine generated header file pnglibconf.h.
+ 411              	 */
+ 412              	
+ 413              	/* If you are running on a machine where you cannot allocate more
+ 414              	 * than 64K of memory at once, uncomment this.  While libpng will not
+ 415              	 * normally need that much memory in a chunk (unless you load up a very
+ 416              	 * large file), zlib needs to know how big of a chunk it can use, and
+ 417              	 * libpng thus makes sure to check any memory allocation to verify it
+ 418              	 * will fit into memory.
+ 419              	 *
+ 420              	 * zlib provides 'MAXSEG_64K' which, if defined, indicates the
+ 421              	 * same limit and pngconf.h (already included) sets the limit
+ 422              	 * if certain operating systems are detected.
+ 423              	 */
+ 424              	#if defined(MAXSEG_64K) && !defined(PNG_MAX_MALLOC_64K)
+ 425              	#  define PNG_MAX_MALLOC_64K
+ 426              	#endif
+ 427              	
+ 428              	#ifndef PNG_UNUSED
+ 429              	/* Unused formal parameter warnings are silenced using the following macro
+ 430              	 * which is expected to have no bad effects on performance (optimizing
+ 431              	 * compilers will probably remove it entirely).  Note that if you replace
+ 432              	 * it with something other than whitespace, you must include the terminating
+ 433              	 * semicolon.
+ 434              	 */
+ 435              	#  define PNG_UNUSED(param) (void)param;
+ 436              	#endif
+ 437              	
+ 438              	/* Just a little check that someone hasn't tried to define something
+ 439              	 * contradictory.
+ 440              	 */
+ 441              	#if (PNG_ZBUF_SIZE > 65536L) && defined(PNG_MAX_MALLOC_64K)
+ 442              	#  undef PNG_ZBUF_SIZE
+ 443              	#  define PNG_ZBUF_SIZE 65536L
+ 444              	#endif
+ 445              	
+ 446              	/* If warnings or errors are turned off the code is disabled or redirected here.
+ 447              	 * From 1.5.4 functions have been added to allow very limited formatting of
+ 448              	 * error and warning messages - this code will also be disabled here.
+ 449              	 */
+ 450              	#ifdef PNG_WARNINGS_SUPPORTED
+ 451              	#  define PNG_WARNING_PARAMETERS(p) png_warning_parameters p;
+ 452              	#else
+ 453              	#  define png_warning_parameter(p,number,string) ((void)0)
+ 454              	#  define png_warning_parameter_unsigned(p,number,format,value) ((void)0)
+ 455              	#  define png_warning_parameter_signed(p,number,format,value) ((void)0)
+ 456              	#  define png_formatted_warning(pp,p,message) ((void)(pp))
+ 457              	#  define PNG_WARNING_PARAMETERS(p)
+ 458              	#endif
+ 459              	#ifndef PNG_ERROR_TEXT_SUPPORTED
+ 460              	#  define png_fixed_error(s1,s2) png_err(s1)
+ 461              	#endif
+ 462              	
+ 463              	/* Some fixed point APIs are still required even if not exported because
+ 464              	 * they get used by the corresponding floating point APIs.  This magic
+ 465              	 * deals with this:
+ 466              	 */
+ 467              	#ifdef PNG_FIXED_POINT_SUPPORTED
+ 468              	#  define PNGFAPI PNGAPI
+ 469              	#else
+ 470              	#  define PNGFAPI /* PRIVATE */
+ 471              	#endif
+ 472              	
+ 473              	#ifndef PNG_VERSION_INFO_ONLY
+ 474              	/* Other defines specific to compilers can go here.  Try to keep
+ 475              	 * them inside an appropriate ifdef/endif pair for portability.
+ 476              	 */
+ 477              	
+ 478              	/* C allows up-casts from (void*) to any pointer and (const void*) to any
+ 479              	 * pointer to a const object.  C++ regards this as a type error and requires an
+ 480              	 * explicit, static, cast and provides the static_cast<> rune to ensure that
+ 481              	 * const is not cast away.
+ 482              	 */
+ 483              	#ifdef __cplusplus
+ 484              	#  define png_voidcast(type, value) static_cast<type>(value)
+ 485              	#  define png_constcast(type, value) const_cast<type>(value)
+ 486              	#  define png_aligncast(type, value) \
+ 487              	   static_cast<type>(static_cast<void*>(value))
+ 488              	#  define png_aligncastconst(type, value) \
+ 489              	   static_cast<type>(static_cast<const void*>(value))
+ 490              	#else
+ 491              	#  define png_voidcast(type, value) (value)
+ 492              	#  ifdef _WIN64
+ 493              	#     ifdef __GNUC__
+ 494              	         typedef unsigned long long png_ptruint;
+ 495              	#     else
+ 496              	         typedef unsigned __int64 png_ptruint;
+ 497              	#     endif
+ 498              	#  else
+ 499              	      typedef unsigned long png_ptruint;
+ 500              	#  endif
+ 501              	#  define png_constcast(type, value) ((type)(png_ptruint)(const void*)(value))
+ 502              	#  define png_aligncast(type, value) ((void*)(value))
+ 503              	#  define png_aligncastconst(type, value) ((const void*)(value))
+ 504              	#endif /* __cplusplus */
+ 505              	
+ 506              	#if defined(PNG_FLOATING_POINT_SUPPORTED) ||\
+ 507              	    defined(PNG_FLOATING_ARITHMETIC_SUPPORTED)
+ 508              	   /* png.c requires the following ANSI-C constants if the conversion of
+ 509              	    * floating point to ASCII is implemented therein:
+ 510              	    *
+ 511              	    *  DBL_DIG  Maximum number of decimal digits (can be set to any constant)
+ 512              	    *  DBL_MIN  Smallest normalized fp number (can be set to an arbitrary value)
+ 513              	    *  DBL_MAX  Maximum floating point number (can be set to an arbitrary value)
+ 514              	    */
+ 515              	#  include <float.h>
+ 516              	
+ 517              	#  if (defined(__MWERKS__) && defined(macintosh)) || defined(applec) || \
+ 518              	    defined(THINK_C) || defined(__SC__) || defined(TARGET_OS_MAC)
+ 519              	   /* We need to check that <math.h> hasn't already been included earlier
+ 520              	    * as it seems it doesn't agree with <fp.h>, yet we should really use
+ 521              	    * <fp.h> if possible.
+ 522              	    */
+ 523              	#    if !defined(__MATH_H__) && !defined(__MATH_H) && !defined(__cmath__)
+ 524              	#      include <fp.h>
+ 525              	#    endif
+ 526              	#  else
+ 527              	#    include <math.h>
+ 528              	#  endif
+ 529              	#  if defined(_AMIGA) && defined(__SASC) && defined(_M68881)
+ 530              	   /* Amiga SAS/C: We must include builtin FPU functions when compiling using
+ 531              	    * MATH=68881
+ 532              	    */
+ 533              	#    include <m68881.h>
+ 534              	#  endif
+ 535              	#endif
+ 536              	
+ 537              	/* This provides the non-ANSI (far) memory allocation routines. */
+ 538              	#if defined(__TURBOC__) && defined(__MSDOS__)
+ 539              	#  include <mem.h>
+ 540              	#  include <alloc.h>
+ 541              	#endif
+ 542              	
+ 543              	#if defined(WIN32) || defined(_Windows) || defined(_WINDOWS) || \
+ 544              	    defined(_WIN32) || defined(__WIN32__)
+ 545              	#  include <windows.h>  /* defines _WINDOWS_ macro */
+ 546              	#endif
+ 547              	#endif /* PNG_VERSION_INFO_ONLY */
+ 548              	
+ 549              	/* Moved here around 1.5.0beta36 from pngconf.h */
+ 550              	/* Users may want to use these so they are not private.  Any library
+ 551              	 * functions that are passed far data must be model-independent.
+ 552              	 */
+ 553              	
+ 554              	/* Memory model/platform independent fns */
+ 555              	#ifndef PNG_ABORT
+ 556              	#  ifdef _WINDOWS_
+ 557              	#    define PNG_ABORT() ExitProcess(0)
+ 558              	#  elif defined(PNG_RZ)
+ 559              	#    define PNG_ABORT() while(1)
+ 560              	#  else
+ 561              	#    define PNG_ABORT() abort()
+ 562              	#  endif
+ 563              	#endif
+ 564              	
+ 565              	/* These macros may need to be architecture dependent. */
+ 566              	#define PNG_ALIGN_NONE   0 /* do not use data alignment */
+ 567              	#define PNG_ALIGN_ALWAYS 1 /* assume unaligned accesses are OK */
+ 568              	#ifdef offsetof
+ 569              	#  define PNG_ALIGN_OFFSET 2 /* use offsetof to determine alignment */
+ 570              	#else
+ 571              	#  define PNG_ALIGN_OFFSET -1 /* prevent the use of this */
+ 572              	#endif
+ 573              	#define PNG_ALIGN_SIZE   3 /* use sizeof to determine alignment */
+ 574              	
+ 575              	#ifndef PNG_ALIGN_TYPE
+ 576              	   /* Default to using aligned access optimizations and requiring alignment to a
+ 577              	    * multiple of the data type size.  Override in a compiler specific fashion
+ 578              	    * if necessary by inserting tests here:
+ 579              	    */
+ 580              	#  define PNG_ALIGN_TYPE PNG_ALIGN_SIZE
+ 581              	#endif
+ 582              	
+ 583              	#if PNG_ALIGN_TYPE == PNG_ALIGN_SIZE
+ 584              	   /* This is used because in some compiler implementations non-aligned
+ 585              	    * structure members are supported, so the offsetof approach below fails.
+ 586              	    * Set PNG_ALIGN_SIZE=0 for compiler combinations where unaligned access
+ 587              	    * is good for performance.  Do not do this unless you have tested the result
+ 588              	    * and understand it.
+ 589              	    */
+ 590              	#  define png_alignof(type) (sizeof (type))
+ 591              	#else
+ 592              	#  if PNG_ALIGN_TYPE == PNG_ALIGN_OFFSET
+ 593              	#     define png_alignof(type) offsetof(struct{char c; type t;}, t)
+ 594              	#  else
+ 595              	#     if PNG_ALIGN_TYPE == PNG_ALIGN_ALWAYS
+ 596              	#        define png_alignof(type) (1)
+ 597              	#     endif
+ 598              	      /* Else leave png_alignof undefined to prevent use thereof */
+ 599              	#  endif
+ 600              	#endif
+ 601              	
+ 602              	/* This implicitly assumes alignment is always to a power of 2. */
+ 603              	#ifdef png_alignof
+ 604              	#  define png_isaligned(ptr, type)\
+ 605              	   (((type)((const char*)ptr-(const char*)0) & \
+ 606              	   (type)(png_alignof(type)-1)) == 0)
+ 607              	#else
+ 608              	#  define png_isaligned(ptr, type) 0
+ 609              	#endif
+ 610              	
+ 611              	/* End of memory model/platform independent support */
+ 612              	/* End of 1.5.0beta36 move from pngconf.h */
+ 613              	
+ 614              	/* CONSTANTS and UTILITY MACROS
+ 615              	 * These are used internally by libpng and not exposed in the API
+ 616              	 */
+ 617              	
+ 618              	/* Various modes of operation.  Note that after an init, mode is set to
+ 619              	 * zero automatically when the structure is created.  Three of these
+ 620              	 * are defined in png.h because they need to be visible to applications
+ 621              	 * that call png_set_unknown_chunk().
+ 622              	 */
+ 623              	/* #define PNG_HAVE_IHDR            0x01U (defined in png.h) */
+ 624              	/* #define PNG_HAVE_PLTE            0x02U (defined in png.h) */
+ 625              	#define PNG_HAVE_IDAT               0x04U
+ 626              	/* #define PNG_AFTER_IDAT           0x08U (defined in png.h) */
+ 627              	#define PNG_HAVE_IEND               0x10U
+ 628              	                   /*               0x20U (unused) */
+ 629              	                   /*               0x40U (unused) */
+ 630              	                   /*               0x80U (unused) */
+ 631              	#define PNG_HAVE_CHUNK_HEADER      0x100U
+ 632              	#define PNG_WROTE_tIME             0x200U
+ 633              	#define PNG_WROTE_INFO_BEFORE_PLTE 0x400U
+ 634              	#define PNG_BACKGROUND_IS_GRAY     0x800U
+ 635              	#define PNG_HAVE_PNG_SIGNATURE    0x1000U
+ 636              	#define PNG_HAVE_CHUNK_AFTER_IDAT 0x2000U /* Have another chunk after IDAT */
+ 637              	                   /*             0x4000U (unused) */
+ 638              	#define PNG_IS_READ_STRUCT        0x8000U /* Else is a write struct */
+ 639              	
+ 640              	/* Flags for the transformations the PNG library does on the image data */
+ 641              	#define PNG_BGR                 0x0001U
+ 642              	#define PNG_INTERLACE           0x0002U
+ 643              	#define PNG_PACK                0x0004U
+ 644              	#define PNG_SHIFT               0x0008U
+ 645              	#define PNG_SWAP_BYTES          0x0010U
+ 646              	#define PNG_INVERT_MONO         0x0020U
+ 647              	#define PNG_QUANTIZE            0x0040U
+ 648              	#define PNG_COMPOSE             0x0080U    /* Was PNG_BACKGROUND */
+ 649              	#define PNG_BACKGROUND_EXPAND   0x0100U
+ 650              	#define PNG_EXPAND_16           0x0200U    /* Added to libpng 1.5.2 */
+ 651              	#define PNG_16_TO_8             0x0400U    /* Becomes 'chop' in 1.5.4 */
+ 652              	#define PNG_RGBA                0x0800U
+ 653              	#define PNG_EXPAND              0x1000U
+ 654              	#define PNG_GAMMA               0x2000U
+ 655              	#define PNG_GRAY_TO_RGB         0x4000U
+ 656              	#define PNG_FILLER              0x8000U
+ 657              	#define PNG_PACKSWAP           0x10000U
+ 658              	#define PNG_SWAP_ALPHA         0x20000U
+ 659              	#define PNG_STRIP_ALPHA        0x40000U
+ 660              	#define PNG_INVERT_ALPHA       0x80000U
+ 661              	#define PNG_USER_TRANSFORM    0x100000U
+ 662              	#define PNG_RGB_TO_GRAY_ERR   0x200000U
+ 663              	#define PNG_RGB_TO_GRAY_WARN  0x400000U
+ 664              	#define PNG_RGB_TO_GRAY       0x600000U /* two bits, RGB_TO_GRAY_ERR|WARN */
+ 665              	#define PNG_ENCODE_ALPHA      0x800000U /* Added to libpng-1.5.4 */
+ 666              	#define PNG_ADD_ALPHA        0x1000000U /* Added to libpng-1.2.7 */
+ 667              	#define PNG_EXPAND_tRNS      0x2000000U /* Added to libpng-1.2.9 */
+ 668              	#define PNG_SCALE_16_TO_8    0x4000000U /* Added to libpng-1.5.4 */
+ 669              	                       /*    0x8000000U unused */
+ 670              	                       /*   0x10000000U unused */
+ 671              	                       /*   0x20000000U unused */
+ 672              	                       /*   0x40000000U unused */
+ 673              	/* Flags for png_create_struct */
+ 674              	#define PNG_STRUCT_PNG   0x0001U
+ 675              	#define PNG_STRUCT_INFO  0x0002U
+ 676              	
+ 677              	/* Flags for the png_ptr->flags rather than declaring a byte for each one */
+ 678              	#define PNG_FLAG_ZLIB_CUSTOM_STRATEGY     0x0001U
+ 679              	#define PNG_FLAG_ZSTREAM_INITIALIZED      0x0002U /* Added to libpng-1.6.0 */
+ 680              	                                  /*      0x0004U    unused */
+ 681              	#define PNG_FLAG_ZSTREAM_ENDED            0x0008U /* Added to libpng-1.6.0 */
+ 682              	                                  /*      0x0010U    unused */
+ 683              	                                  /*      0x0020U    unused */
+ 684              	#define PNG_FLAG_ROW_INIT                 0x0040U
+ 685              	#define PNG_FLAG_FILLER_AFTER             0x0080U
+ 686              	#define PNG_FLAG_CRC_ANCILLARY_USE        0x0100U
+ 687              	#define PNG_FLAG_CRC_ANCILLARY_NOWARN     0x0200U
+ 688              	#define PNG_FLAG_CRC_CRITICAL_USE         0x0400U
+ 689              	#define PNG_FLAG_CRC_CRITICAL_IGNORE      0x0800U
+ 690              	#define PNG_FLAG_ASSUME_sRGB              0x1000U /* Added to libpng-1.5.4 */
+ 691              	#define PNG_FLAG_OPTIMIZE_ALPHA           0x2000U /* Added to libpng-1.5.4 */
+ 692              	#define PNG_FLAG_DETECT_UNINITIALIZED     0x4000U /* Added to libpng-1.5.4 */
+ 693              	/* #define PNG_FLAG_KEEP_UNKNOWN_CHUNKS      0x8000U */
+ 694              	/* #define PNG_FLAG_KEEP_UNSAFE_CHUNKS      0x10000U */
+ 695              	#define PNG_FLAG_LIBRARY_MISMATCH        0x20000U
+ 696              	#define PNG_FLAG_STRIP_ERROR_NUMBERS     0x40000U
+ 697              	#define PNG_FLAG_STRIP_ERROR_TEXT        0x80000U
+ 698              	#define PNG_FLAG_BENIGN_ERRORS_WARN     0x100000U /* Added to libpng-1.4.0 */
+ 699              	#define PNG_FLAG_APP_WARNINGS_WARN      0x200000U /* Added to libpng-1.6.0 */
+ 700              	#define PNG_FLAG_APP_ERRORS_WARN        0x400000U /* Added to libpng-1.6.0 */
+ 701              	                                  /*    0x800000U    unused */
+ 702              	                                  /*   0x1000000U    unused */
+ 703              	                                  /*   0x2000000U    unused */
+ 704              	                                  /*   0x4000000U    unused */
+ 705              	                                  /*   0x8000000U    unused */
+ 706              	                                  /*  0x10000000U    unused */
+ 707              	                                  /*  0x20000000U    unused */
+ 708              	                                  /*  0x40000000U    unused */
+ 709              	
+ 710              	#define PNG_FLAG_CRC_ANCILLARY_MASK (PNG_FLAG_CRC_ANCILLARY_USE | \
+ 711              	                                     PNG_FLAG_CRC_ANCILLARY_NOWARN)
+ 712              	
+ 713              	#define PNG_FLAG_CRC_CRITICAL_MASK  (PNG_FLAG_CRC_CRITICAL_USE | \
+ 714              	                                     PNG_FLAG_CRC_CRITICAL_IGNORE)
+ 715              	
+ 716              	#define PNG_FLAG_CRC_MASK           (PNG_FLAG_CRC_ANCILLARY_MASK | \
+ 717              	                                     PNG_FLAG_CRC_CRITICAL_MASK)
+ 718              	
+ 719              	/* Save typing and make code easier to understand */
+ 720              	
+ 721              	#define PNG_COLOR_DIST(c1, c2) (abs((int)((c1).red) - (int)((c2).red)) + \
+ 722              	   abs((int)((c1).green) - (int)((c2).green)) + \
+ 723              	   abs((int)((c1).blue) - (int)((c2).blue)))
+ 724              	
+ 725              	/* Added to libpng-1.6.0: scale a 16-bit value in the range 0..65535 to 0..255
+ 726              	 * by dividing by 257 *with rounding*.  This macro is exact for the given range.
+ 727              	 * See the discourse in pngrtran.c png_do_scale_16_to_8.  The values in the
+ 728              	 * macro were established by experiment (modifying the added value).  The macro
+ 729              	 * has a second variant that takes a value already scaled by 255 and divides by
+ 730              	 * 65535 - this has a maximum error of .502.  Over the range 0..65535*65535 it
+ 731              	 * only gives off-by-one errors and only for 0.5% (1 in 200) of the values.
+ 732              	 */
+ 733              	#define PNG_DIV65535(v24) (((v24) + 32895) >> 16)
+ 734              	#define PNG_DIV257(v16) PNG_DIV65535((png_uint_32)(v16) * 255)
+ 735              	
+ 736              	/* Added to libpng-1.2.6 JB */
+ 737              	#define PNG_ROWBYTES(pixel_bits, width) \
+ 738              	    ((pixel_bits) >= 8 ? \
+ 739              	    ((size_t)(width) * (((size_t)(pixel_bits)) >> 3)) : \
+ 740              	    (( ((size_t)(width) * ((size_t)(pixel_bits))) + 7) >> 3) )
+ 741              	
+ 742              	/* This returns the number of trailing bits in the last byte of a row, 0 if the
+ 743              	 * last byte is completely full of pixels.  It is, in principle, (pixel_bits x
+ 744              	 * width) % 8, but that would overflow for large 'width'.  The second macro is
+ 745              	 * the same except that it returns the number of unused bits in the last byte;
+ 746              	 * (8-TRAILBITS), but 0 when TRAILBITS is 0.
+ 747              	 *
+ 748              	 * NOTE: these macros are intended to be self-evidently correct and never
+ 749              	 * overflow on the assumption that pixel_bits is in the range 0..255.  The
+ 750              	 * arguments are evaluated only once and they can be signed (e.g. as a result of
+ 751              	 * the integral promotions).  The result of the expression always has type
+ 752              	 * (png_uint_32), however the compiler always knows it is in the range 0..7.
+ 753              	 */
+ 754              	#define PNG_TRAILBITS(pixel_bits, width) \
+ 755              	    (((pixel_bits) * ((width) % (png_uint_32)8)) % 8)
+ 756              	
+ 757              	#define PNG_PADBITS(pixel_bits, width) \
+ 758              	    ((8 - PNG_TRAILBITS(pixel_bits, width)) % 8)
+ 759              	
+ 760              	/* PNG_OUT_OF_RANGE returns true if value is outside the range
+ 761              	 * ideal-delta..ideal+delta.  Each argument is evaluated twice.
+ 762              	 * "ideal" and "delta" should be constants, normally simple
+ 763              	 * integers, "value" a variable. Added to libpng-1.2.6 JB
+ 764              	 */
+ 765              	#define PNG_OUT_OF_RANGE(value, ideal, delta) \
+ 766              	   ( (value) < (ideal)-(delta) || (value) > (ideal)+(delta) )
+ 767              	
+ 768              	/* Conversions between fixed and floating point, only defined if
+ 769              	 * required (to make sure the code doesn't accidentally use float
+ 770              	 * when it is supposedly disabled.)
+ 771              	 */
+ 772              	#ifdef PNG_FLOATING_POINT_SUPPORTED
+ 773              	/* The floating point conversion can't overflow, though it can and
+ 774              	 * does lose accuracy relative to the original fixed point value.
+ 775              	 * In practice this doesn't matter because png_fixed_point only
+ 776              	 * stores numbers with very low precision.  The png_ptr and s
+ 777              	 * arguments are unused by default but are there in case error
+ 778              	 * checking becomes a requirement.
+ 779              	 */
+ 780              	#define png_float(png_ptr, fixed, s) (.00001 * (fixed))
+ 781              	
+ 782              	/* The fixed point conversion performs range checking and evaluates
+ 783              	 * its argument multiple times, so must be used with care.  The
+ 784              	 * range checking uses the PNG specification values for a signed
+ 785              	 * 32-bit fixed point value except that the values are deliberately
+ 786              	 * rounded-to-zero to an integral value - 21474 (21474.83 is roughly
+ 787              	 * (2^31-1) * 100000). 's' is a string that describes the value being
+ 788              	 * converted.
+ 789              	 *
+ 790              	 * NOTE: this macro will raise a png_error if the range check fails,
+ 791              	 * therefore it is normally only appropriate to use this on values
+ 792              	 * that come from API calls or other sources where an out of range
+ 793              	 * error indicates a programming error, not a data error!
+ 794              	 *
+ 795              	 * NOTE: by default this is off - the macro is not used - because the
+ 796              	 * function call saves a lot of code.
+ 797              	 */
+ 798              	#ifdef PNG_FIXED_POINT_MACRO_SUPPORTED
+ 799              	#define png_fixed(png_ptr, fp, s) ((fp) <= 21474 && (fp) >= -21474 ?\
+ 800              	    ((png_fixed_point)(100000 * (fp))) : (png_fixed_error(png_ptr, s),0))
+ 801              	#endif
+ 802              	/* else the corresponding function is defined below, inside the scope of the
+ 803              	 * cplusplus test.
+ 804              	 */
+ 805              	#endif
+ 806              	
+ 807              	/* Constants for known chunk types.  If you need to add a chunk, define the name
+ 808              	 * here.  For historical reasons these constants have the form png_<name>; i.e.
+ 809              	 * the prefix is lower case.  Please use decimal values as the parameters to
+ 810              	 * match the ISO PNG specification and to avoid relying on the C locale
+ 811              	 * interpretation of character values.
+ 812              	 *
+ 813              	 * Prior to 1.5.6 these constants were strings, as of 1.5.6 png_uint_32 values
+ 814              	 * are computed and a new macro (PNG_STRING_FROM_CHUNK) added to allow a string
+ 815              	 * to be generated if required.
+ 816              	 *
+ 817              	 * PNG_32b correctly produces a value shifted by up to 24 bits, even on
+ 818              	 * architectures where (int) is only 16 bits.
+ 819              	 */
+ 820              	#define PNG_32b(b,s) ((png_uint_32)(b) << (s))
+ 821              	#define PNG_U32(b1,b2,b3,b4) \
+ 822              	   (PNG_32b(b1,24) | PNG_32b(b2,16) | PNG_32b(b3,8) | PNG_32b(b4,0))
+ 823              	
+ 824              	/* Constants for known chunk types.
+ 825              	 *
+ 826              	 * MAINTAINERS: If you need to add a chunk, define the name here.
+ 827              	 * For historical reasons these constants have the form png_<name>; i.e.
+ 828              	 * the prefix is lower case.  Please use decimal values as the parameters to
+ 829              	 * match the ISO PNG specification and to avoid relying on the C locale
+ 830              	 * interpretation of character values.  Please keep the list sorted.
+ 831              	 *
+ 832              	 * Notice that PNG_U32 is used to define a 32-bit value for the 4 byte chunk
+ 833              	 * type.  In fact the specification does not express chunk types this way,
+ 834              	 * however using a 32-bit value means that the chunk type can be read from the
+ 835              	 * stream using exactly the same code as used for a 32-bit unsigned value and
+ 836              	 * can be examined far more efficiently (using one arithmetic compare).
+ 837              	 *
+ 838              	 * Prior to 1.5.6 the chunk type constants were expressed as C strings.  The
+ 839              	 * libpng API still uses strings for 'unknown' chunks and a macro,
+ 840              	 * PNG_STRING_FROM_CHUNK, allows a string to be generated if required.  Notice
+ 841              	 * that for portable code numeric values must still be used; the string "IHDR"
+ 842              	 * is not portable and neither is PNG_U32('I', 'H', 'D', 'R').
+ 843              	 *
+ 844              	 * In 1.7.0 the definitions will be made public in png.h to avoid having to
+ 845              	 * duplicate the same definitions in application code.
+ 846              	 */
+ 847              	#define png_IDAT PNG_U32( 73,  68,  65,  84)
+ 848              	#define png_IEND PNG_U32( 73,  69,  78,  68)
+ 849              	#define png_IHDR PNG_U32( 73,  72,  68,  82)
+ 850              	#define png_PLTE PNG_U32( 80,  76,  84,  69)
+ 851              	#define png_bKGD PNG_U32( 98,  75,  71,  68)
+ 852              	#define png_cHRM PNG_U32( 99,  72,  82,  77)
+ 853              	#define png_eXIf PNG_U32(101,  88,  73, 102) /* registered July 2017 */
+ 854              	#define png_fRAc PNG_U32(102,  82,  65,  99) /* registered, not defined */
+ 855              	#define png_gAMA PNG_U32(103,  65,  77,  65)
+ 856              	#define png_gIFg PNG_U32(103,  73,  70, 103)
+ 857              	#define png_gIFt PNG_U32(103,  73,  70, 116) /* deprecated */
+ 858              	#define png_gIFx PNG_U32(103,  73,  70, 120)
+ 859              	#define png_hIST PNG_U32(104,  73,  83,  84)
+ 860              	#define png_iCCP PNG_U32(105,  67,  67,  80)
+ 861              	#define png_iTXt PNG_U32(105,  84,  88, 116)
+ 862              	#define png_oFFs PNG_U32(111,  70,  70, 115)
+ 863              	#define png_pCAL PNG_U32(112,  67,  65,  76)
+ 864              	#define png_pHYs PNG_U32(112,  72,  89, 115)
+ 865              	#define png_sBIT PNG_U32(115,  66,  73,  84)
+ 866              	#define png_sCAL PNG_U32(115,  67,  65,  76)
+ 867              	#define png_sPLT PNG_U32(115,  80,  76,  84)
+ 868              	#define png_sRGB PNG_U32(115,  82,  71,  66)
+ 869              	#define png_sTER PNG_U32(115,  84,  69,  82)
+ 870              	#define png_tEXt PNG_U32(116,  69,  88, 116)
+ 871              	#define png_tIME PNG_U32(116,  73,  77,  69)
+ 872              	#define png_tRNS PNG_U32(116,  82,  78,  83)
+ 873              	#define png_zTXt PNG_U32(122,  84,  88, 116)
+ 874              	
+ 875              	/* The following will work on (signed char*) strings, whereas the get_uint_32
+ 876              	 * macro will fail on top-bit-set values because of the sign extension.
+ 877              	 */
+ 878              	#define PNG_CHUNK_FROM_STRING(s)\
+ 879              	   PNG_U32(0xff & (s)[0], 0xff & (s)[1], 0xff & (s)[2], 0xff & (s)[3])
+ 880              	
+ 881              	/* This uses (char), not (png_byte) to avoid warnings on systems where (char) is
+ 882              	 * signed and the argument is a (char[])  This macro will fail miserably on
+ 883              	 * systems where (char) is more than 8 bits.
+ 884              	 */
+ 885              	#define PNG_STRING_FROM_CHUNK(s,c)\
+ 886              	   (void)(((char*)(s))[0]=(char)(((c)>>24) & 0xff), \
+ 887              	   ((char*)(s))[1]=(char)(((c)>>16) & 0xff),\
+ 888              	   ((char*)(s))[2]=(char)(((c)>>8) & 0xff), \
+ 889              	   ((char*)(s))[3]=(char)((c & 0xff)))
+ 890              	
+ 891              	/* Do the same but terminate with a null character. */
+ 892              	#define PNG_CSTRING_FROM_CHUNK(s,c)\
+ 893              	   (void)(PNG_STRING_FROM_CHUNK(s,c), ((char*)(s))[4] = 0)
+ 894              	
+ 895              	/* Test on flag values as defined in the spec (section 5.4): */
+ 896              	#define PNG_CHUNK_ANCILLARY(c)   (1 & ((c) >> 29))
+ 897              	#define PNG_CHUNK_CRITICAL(c)     (!PNG_CHUNK_ANCILLARY(c))
+ 898              	#define PNG_CHUNK_PRIVATE(c)      (1 & ((c) >> 21))
+ 899              	#define PNG_CHUNK_RESERVED(c)     (1 & ((c) >> 13))
+ 900              	#define PNG_CHUNK_SAFE_TO_COPY(c) (1 & ((c) >>  5))
+ 901              	
+ 902              	/* Gamma values (new at libpng-1.5.4): */
+ 903              	#define PNG_GAMMA_MAC_OLD 151724  /* Assume '1.8' is really 2.2/1.45! */
+ 904              	#define PNG_GAMMA_MAC_INVERSE 65909
+ 905              	#define PNG_GAMMA_sRGB_INVERSE 45455
+ 906              	
+NO DEFINED SYMBOLS
+
+NO UNDEFINED SYMBOLS

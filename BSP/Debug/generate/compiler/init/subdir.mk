@@ -1,0 +1,47 @@
+################################################################################
+# Automatically-generated file. Do not edit!
+################################################################################
+
+# Add inputs and outputs from these tool invocations to the build variables 
+C_SRCS += \
+../generate/compiler/init/dso_handle.c \
+../generate/compiler/init/fini.c \
+../generate/compiler/init/init.c \
+../generate/compiler/init/r_compiler_abstraction.c \
+../generate/compiler/init/resetprg.c \
+../generate/compiler/init/sections.c 
+
+LST += \
+dso_handle.lst \
+fini.lst \
+init.lst \
+r_compiler_abstraction.lst \
+resetprg.lst \
+sections.lst 
+
+C_DEPS += \
+./generate/compiler/init/dso_handle.d \
+./generate/compiler/init/fini.d \
+./generate/compiler/init/init.d \
+./generate/compiler/init/r_compiler_abstraction.d \
+./generate/compiler/init/resetprg.d \
+./generate/compiler/init/sections.d 
+
+OBJS += \
+./generate/compiler/init/dso_handle.o \
+./generate/compiler/init/fini.o \
+./generate/compiler/init/init.o \
+./generate/compiler/init/r_compiler_abstraction.o \
+./generate/compiler/init/resetprg.o \
+./generate/compiler/init/sections.o 
+
+MAP += \
+BSP.map 
+
+
+# Each subdirectory must supply rules for building sources it contributes
+generate/compiler/init/%.o: ../generate/compiler/init/%.c
+	@echo 'Building file: $<'
+	$(file > $@.in,-mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=neon -fdiagnostics-parseable-fixits -Og -ffunction-sections -fdata-sections -Wnull-dereference -Wstack-usage=100 -g3 -gdwarf-4 -DAPPLICATION_PROJECT -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/freertos/include" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/../BSP/src/config_files" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/freertos/include/private" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/freertos/portable/gcc/arm_ca9_rza2m" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/freertos/portable/memmang" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/compiler/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/configuration" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/system/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/system/inc/iodefines" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/system/inc/iobitmasks" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/renesas/application/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/renesas/middleware/touch/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/renesas/middleware/touch/src/touch" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh0/basic" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh0/basic/userdef" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh0/basic/src/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh0/hid" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh0/hid/userdef" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh0/hid/src/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh1/basic" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh1/basic/userdef" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh1/basic/src/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh1/hid" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh1/hid/userdef" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_usbh1/hid/src/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/renesas/middleware/touch/src/lcd_controller/usb" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/renesas/middleware/touch/src/lcd_controller/usb/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/png/libpng" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/png/zlib" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/png/libpng" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/src/png/zlib" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/inc/inside" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/src/driver/code" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/src/driver/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/src/driver_l1/code" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/src/driver_l1/code/d0lib" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rga/src/driver_l1/code/rz" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/system/iodefine" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_riic/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/drivers/r_stb/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_rvapi/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_mipi/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_ceu/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/drivers/r_intc/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/drivers/r_cache/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_cbuffer/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/drivers/r_mmu/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_vdc/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_jcu/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_ostm/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/drivers/r_cpg/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/sc_drivers/r_scifa/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/drivers/r_gpio/inc" -I"C:/workspace/RZA2M/LVGL/LVGL_Renesas_RZA2M_FreeRTOS10/BSP/generate/os_abstraction/inc" -fabi-version=0 -Wno-missing-declarations -Wno-parentheses -Wno-conversion -Wno-sign-compare -Wno-padded -Wno-unused-parameter -Wno-discarded-qualifiers -Wno-implicit-function-declaration -Wno-comment -Wno-unused-variable -Wstack-usage=4096 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -c -o "$@" "$<")
+	@arm-none-eabi-gcc @"$@.in"
+
